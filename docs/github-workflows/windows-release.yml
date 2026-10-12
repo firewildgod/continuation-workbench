@@ -1,0 +1,87 @@
+# Optional template. Copy into .github/workflows to enable it.
+name: Windows release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Require matching tag and release notes
+        run: |
+          $projectVersion = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -cne "v$projectVersion") {
+            throw 'The release tag must match the package version.'
+          }
+          if (-not (Test-Path -LiteralPath "docs/release-$projectVersion.md" -PathType Leaf)) {
+            throw 'Versioned release notes are required.'
+          }
+      - name: Check public source boundary
+        run: node scripts/check-public-source.cjs
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+      - name: Test isolated fixtures
+        run: npm test
+      - name: Verify offline release guard
+        run: node scripts/verify-release-guard.cjs
+      - name: Package own Windows application
+        run: npm run package
+      - name: Prepare explicit public distribution
+        run: node scripts/prepare-release.cjs
+      - name: Publish own artifacts after successful upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $projectVersion = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $releaseRoot = Join-Path 'release' "续航台-$projectVersion-发布包"
+          $artifactNames = @(
+            "Continuation-Workbench-$projectVersion-portable.exe",
+            "Continuation-Workbench-$projectVersion-x64.zip",
+            "Continuation-Workbench-$projectVersion-setup.exe",
+            'SHA256SUMS.txt'
+          )
+          $artifacts = @($artifactNames | ForEach-Object { Join-Path $releaseRoot $_ })
+          foreach ($artifact in $artifacts) {
+            if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
+              throw 'An expected public artifact is missing.'
+            }
+          }
+          foreach ($row in Get-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt')) {
+            $parts = $row -split '\s{2,}', 2
+            if ($parts.Length -ne 2 -or $parts[0] -notmatch '^[a-fA-F0-9]{64}$' -or $parts[1] -notin $artifactNames[0..2]) {
+              throw 'The checksum manifest contains an unexpected artifact.'
+            }
+            $actual = (Get-FileHash -LiteralPath (Join-Path $releaseRoot $parts[1]) -Algorithm SHA256).Hash
+            if ($actual -ne $parts[0]) { throw 'A public artifact checksum does not match.' }
+          }
+          gh release create "$env:GITHUB_REF_NAME" @artifacts --repo "$env:GITHUB_REPOSITORY" --verify-tag --draft --title "续航台 $projectVersion" --notes-file "docs/release-$projectVersion.md"
+          if ($LASTEXITCODE -ne 0) { throw 'Draft creation or artifact upload failed; release was not published by this workflow.' }
+          gh release edit "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Upload completed, but the release remains a draft; inspect it before publishing.' }

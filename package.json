@@ -1,0 +1,77 @@
+{
+  "name": "continuation-workbench",
+  "version": "0.2.3",
+  "private": true,
+  "license": "MIT",
+  "author": "Continuation Workbench contributors",
+  "homepage": "https://github.com/firewildgod/continuation-workbench",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/firewildgod/continuation-workbench.git"
+  },
+  "description": "续航台：Codex 与 Claude Code 的 API 连接、费用统计和配置管理",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev:ui": "vite --host 127.0.0.1",
+    "build": "node scripts/clean-build.cjs && tsc -p tsconfig.main.json && vite build",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "start": "electron .",
+    "package": "npm run build && electron-builder --win zip portable nsis",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "dependencies": {
+    "@iarna/toml": "^2.2.5",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^41.0.0",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.64.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "build": {
+    "appId": "local.continuation.workbench",
+    "productName": "续航台",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "!assets/previews/**/*",
+      "package.json",
+      "LICENSE",
+      "LICENSES/**/*",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "win": {
+      "icon": "assets/app-icon.ico",
+      "target": [
+        "zip",
+        "portable",
+        "nsis"
+      ],
+      "signAndEditExecutable": true,
+      "signExecutable": false
+    },
+    "portable": {
+      "artifactName": "Continuation-Workbench-${version}-portable.exe"
+    },
+    "nsis": {
+      "artifactName": "Continuation-Workbench-${version}-setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "续航台"
+    },
+    "artifactName": "Continuation-Workbench-${version}-${arch}.${ext}"
+  }
+}
